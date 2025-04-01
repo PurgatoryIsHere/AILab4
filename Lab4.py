@@ -1,5 +1,5 @@
 """
- Name: Evan Archer
+ Name: Evan Archer, Gabe Sanders, Christopher Bryce, Marvin Wocheslander
  Assignment: Lab 4 - Decision Tree
  Course: CS 330
  Semester: Spring 2025
@@ -46,7 +46,73 @@ def DTpredict(data, model, prediction):
     1
     ...
     """
-    pass
+    root = None
+    att_arr = []
+    predictions = []
+    tokens = []
+    token_index = 0
+
+    def next_token():
+        nonlocal token_index
+        if token_index < len(tokens):
+            token = tokens[token_index]
+            token_index += 1
+            return token
+        return None
+
+    def read_node():
+        # read att for node
+        n = next_token()
+        if n is None:
+            return None
+
+        if n[0] == '[':  # build return node
+            return TreeNode(parent=None, attribute=None, children=None, return_val=n[1:-1])
+
+        # build interior node
+        node = TreeNode(parent=None, attribute=n, children={}, return_val=None)
+
+        next_token_val = next_token()  # read (
+        if next_token_val != "(":
+            # Handle malformed model file
+            return node
+
+        val = next_token()
+        while val != ")" and val is not None:
+            child_node = read_node()
+            if child_node is not None:
+                node.children[val] = child_node
+            val = next_token()
+            if val is None:
+                break
+
+        return node
+
+    def read_model(modelfile):
+        nonlocal root, att_arr, tokens, token_index
+        try:
+            with open(modelfile, 'r') as infile:
+                # Read the first line containing attributes
+                first_line = infile.readline().strip()
+                if first_line:
+                    att_arr = first_line.split()
+                else:
+                    att_arr = []
+
+    content = " ".join(line.strip() for line in infile)
+    tokens = content.split()
+        token_index = 0
+
+    root = read_node()
+
+    # If root is None, create a default return node
+    if root is None:
+        root = TreeNode(parent=None, attribute=None, children=None, return_val="undefined")
+
+    except Exception as e:
+    print(f"Error reading model: {e}")
+    # Create a default root node instead of exiting
+    root = TreeNode(parent=None, attribute=None, children=None, return_val="undefined")
 
 
 def EvaDT(predictionLabel, realLabel, output):
