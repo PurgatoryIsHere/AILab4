@@ -101,7 +101,7 @@ def DTpredict(data, model, prediction):
 
     content = " ".join(line.strip() for line in infile)
     tokens = content.split()
-        token_index = 0
+    token_index = 0
 
     root = read_node()
 
@@ -113,6 +113,90 @@ def DTpredict(data, model, prediction):
     print(f"Error reading model: {e}")
     # Create a default root node instead of exiting
     root = TreeNode(parent=None, attribute=None, children=None, return_val="undefined")
+
+    def trace_tree(node, data):
+        if node.return_val is not None:
+            return node.return_val
+
+        att = node.attribute
+        try:
+            att_index = att_arr.index(att)
+            if att_index < len(data):
+                val = data[att_index]
+                if val in node.children:
+                    t = node.children.get(val)
+                    return trace_tree(t, data)
+                else:
+                    # Handle case where the value is not found in children
+                    # Return the most common class in this node's children
+                    class_counts = {}
+                    for child in node.children.values():
+                        if child.return_val is not None:
+                            class_counts[child.return_val] = class_counts.get(child.return_val, 0) + 1
+
+                    if class_counts:
+                        return max(class_counts.items(), key=lambda x: x[1])[0]
+                    else:
+                        # If no clear majority, return first child's result
+                        first_child = next(iter(node.children.values()))
+                        return trace_tree(first_child, data)
+            else:
+                # Handle case where attribute index is out of bounds
+                # Return most common return_val among children
+                return next(iter(node.children.values())).return_val if node.children else "undefined"
+        except (ValueError, IndexError):
+            # Handle cases where attribute is not found or index error
+            return "undefined"
+
+    def predict_from_model(testfile):
+        nonlocal predictions
+        try:
+            predictions = []
+            with open(testfile, 'r') as file:
+                for line in file:
+                    tokens = line.strip().split()
+
+                    if not tokens:  # Skip empty lines
+                        continue
+
+                    data = []
+                    if tokens[0] == "-1":  # Check if first token is -1
+                        tokens.pop(0)  # consume -1
+
+                    # Match the length of data to att_arr
+                    for i in range(len(att_arr)):
+                        if i < len(tokens):
+                            data.append(tokens[i])
+                        else:
+                            # Pad with empty string if not enough tokens
+                            data.append("")
+
+                    pred = trace_tree(root, data)
+                    predictions.append(pred)
+
+        except Exception as e:
+            print(f"Error reading test file: {e}")
+            # Don't exit, just return empty predictions
+            predictions = []
+
+    def save_predictions(outputfile):
+        try:
+            with open(outputfile, 'w') as p:
+                for pred in predictions:
+                    p.write(f"{pred}\n")
+        except Exception as e:
+            print(f"Error writing to file: {e}")
+
+    # Execute the prediction process
+    read_model(model)
+    predict_from_model(data)
+    save_predictions(prediction)
+
+
+
+                
+        
+    
 
 
 def EvaDT(predictionLabel, realLabel, output):
