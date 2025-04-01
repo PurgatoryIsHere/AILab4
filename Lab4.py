@@ -52,7 +52,131 @@ def DTpredict(data, model, prediction):
     tokens = []
     token_index = 0
 
-    def next_token():
+def build_tree_node(parent, curr_free_atts, node_data, attvalues, features, classes):
+        curr_node = TreeNode(parent)
+        curr_node.class_counts = defaultdict(int)
+        total = 0
+        for cls in classes:
+            count = len(node_data.get(cls, []))
+            curr_node.class_counts[cls] = count
+            total += count
+
+        if total == 0:
+            if parent:
+                curr_node.returnVal = majority_class(parent.class_counts, classes)
+            else:
+                curr_node.returnVal = classes[0] if classes else 'unknown'
+            return curr_node
+
+        if len([cnt for cnt in curr_node.class_counts.values() if cnt > 0]) == 1:
+            curr_node.returnVal = max(curr_node.class_counts, key=lambda k: curr_node.class_counts[k])
+            return curr_node
+
+        available_attrs = [a for a in curr_free_atts if a is not None]
+        if not available_attrs:
+            curr_node.returnVal = majority_class(curr_node.class_counts, classes)
+            return curr_node
+
+        min_entropy = float('inf')
+        best_attr = None
+        for attr in available_attrs:
+            attr_idx = features.index(attr)
+            values = attvalues[attr]
+            partition = []
+            for v in values:
+                part_counts = [0] * len(classes)
+                for cls_idx, cls in enumerate(classes):
+                    for dp in node_data.get(cls, []):
+                        if dp[attr_idx] == v:
+                            part_counts[cls_idx] += 1
+                partition.append(part_counts)
+            ent = partition_entropy(partition)
+            if ent < min_entropy:
+                min_entropy = ent
+                best_attr = attr
+
+        if best_attr is None:
+            curr_node.returnVal = majority_class(curr_node.class_counts, classes)
+            return curr_node
+
+        curr_node.attribute = best_attr
+        attindex = curr_free_atts.index(best_attr)
+        curr_free_atts[attindex] = None
+
+        best_attr_idx = features.index(best_attr)
+        for v in attvalues[best_attr]:
+            child_data = defaultdict(list)
+            for cls in classes:
+                for dp in node_data.get(cls, []):
+                    if dp[best_attr_idx] == v:
+                        child_data[cls].append(dp)
+            child_node = build_tree_node(curr_node, curr_free_atts.copy(), child_data, attvalues, features, classes)
+            curr_node.children[v] = child_node
+
+        curr_free_atts[attindex] = best_attr
+        return curr_node
+
+def build_tree():
+        nonlocal root
+        curr_free_atts = []
+        for i in range(numAtts):
+            curr_free_atts.append(atts[i + 1])
+
+        # Create the initial data structure for all classes
+        node_data = {}
+        for cls in datamap:
+            node_data[cls] = datamap[cls]
+
+        # Call build_tree_node with the proper parameters
+        root = build_tree_node(
+            None,
+            curr_free_atts,
+            node_data,
+            attvalues,
+            atts[1:],
+            list(datamap.keys())
+        )
+
+    def majority_class(class_counts, classes):
+        max_count = -1
+        max_class = None
+        for cls in classes:
+            if class_counts.get(cls, 0) > max_count:
+                max_count = class_counts.get(cls, 0)
+                max_class = cls
+        return max_class if max_class else classes[0] if classes else "unknown"
+
+    def write_node(outfile, curr):
+        if curr.return_val is not None:
+            outfile.write(f"[{curr.return_val}] ")
+            return
+
+        outfile.write(f"{curr.attribute} ( ")
+        for key, value in curr.children.items():
+            outfile.write(f"{key} ")
+            write_node(outfile, value)
+
+        outfile.write(" ) ")
+
+def save_model(modelfile):
+        try:
+            with open(modelfile, 'w') as outfile:
+                for i in range(numAtts):
+                    outfile.write(f"{atts[i + 1]} ")
+                outfile.write("\n")
+
+                write_node(outfile, root)
+
+        except Exception as e:
+            print(f"Error writing to file: {e}")
+            exit(1)
+
+    # Execute the training process
+    read_file(data, 100)  # Using 100% of data by default
+    build_tree()
+    save_model(model)
+
+def next_token():
         nonlocal token_index
         if token_index < len(tokens):
             token = tokens[token_index]
@@ -60,7 +184,7 @@ def DTpredict(data, model, prediction):
             return token
         return None
 
-    def read_node():
+def read_node():
         # read att for node
         n = next_token()
         if n is None:
@@ -88,7 +212,7 @@ def DTpredict(data, model, prediction):
 
         return node
 
-    def read_model(modelfile):
+def read_model(modelfile):
         nonlocal root, att_arr, tokens, token_index
         try:
             with open(modelfile, 'r') as infile:
