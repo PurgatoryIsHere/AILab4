@@ -261,3 +261,118 @@ def DTtrain(data, model):
     build_tree()
     save_model(model)
 
+def DTpredict(data, model, prediction):
+    """
+    This is the main function to make predictions on the test dataset. It will load saved model file,
+    and also load testing data TestDataNoLabel.txt, and apply the trained model to make predictions.
+    You should save your predictions in prediction file, each line would be a label, such as:
+    1
+    0
+    0
+    1
+    ...
+    """
+    # Initialize prediction variables
+    root = None
+    att_arr = []
+    predictions = []
+    tokens = []
+    token_index = 0
+
+    def next_token():
+        nonlocal token_index
+        if token_index < len(tokens):
+            token = tokens[token_index]
+            token_index += 1
+            return token
+        return None
+
+    def read_node():
+        # read att for node
+        n = next_token()
+        if n is None:
+            return None
+
+        if n[0] == '[':  # build return node
+            return TreeNode(parent=None, attribute=None, children=None, return_val=n[1:-1])
+
+        # build interior node
+        node = TreeNode(parent=None, attribute=n, children={}, return_val=None)
+
+        next_token_val = next_token()  # read (
+        if next_token_val != "(":
+            # Handle malformed model file
+            return node
+
+        val = next_token()
+        while val != ")" and val is not None:
+            child_node = read_node()
+            if child_node is not None:
+                node.children[val] = child_node
+            val = next_token()
+            if val is None:
+                break
+
+        return node
+
+    def read_model(modelfile):
+        nonlocal root, att_arr, tokens, token_index
+        try:
+            with open(modelfile, 'r') as infile:
+                # Read the first line containing attributes
+                first_line = infile.readline().strip()
+                if first_line:
+                    att_arr = first_line.split()
+                else:
+                    att_arr = []
+
+                # Create a string iterator to simulate Scanner behavior
+                content = " ".join(line.strip() for line in infile)
+                tokens = content.split()
+                token_index = 0
+
+                root = read_node()
+
+                # If root is None, create a default return node
+                if root is None:
+                    root = TreeNode(parent=None, attribute=None, children=None, return_val="undefined")
+
+        except Exception as e:
+            print(f"Error reading model: {e}")
+            # Create a default root node instead of exiting
+            root = TreeNode(parent=None, attribute=None, children=None, return_val="undefined")
+
+    def trace_tree(node, data):
+        if node.return_val is not None:
+            return node.return_val
+
+        att = node.attribute
+        try:
+            att_index = att_arr.index(att)
+            if att_index < len(data):
+                val = data[att_index]
+                if val in node.children:
+                    t = node.children.get(val)
+                    return trace_tree(t, data)
+                else:
+                    # Handle case where the value is not found in children
+                    # Return the most common class in this node's children
+                    class_counts = {}
+                    for child in node.children.values():
+                        if child.return_val is not None:
+                            class_counts[child.return_val] = class_counts.get(child.return_val, 0) + 1
+
+                    if class_counts:
+                        return max(class_counts.items(), key=lambda x: x[1])[0]
+                    else:
+                        # If no clear majority, return first child's result
+                        first_child = next(iter(node.children.values()))
+                        return trace_tree(first_child, data)
+            else:
+                # Handle case where attribute index is out of bounds
+                # Return most common return_val among children
+                return next(iter(node.children.values())).return_val if node.children else "undefined"
+        except (ValueError, IndexError):
+            # Handle cases where attribute is not found or index error
+            return "undefined"
+
